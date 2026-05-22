@@ -1,0 +1,52 @@
+name: 'Setup Node.js and Install Dependencies'
+description: 'Sets up Node.js, caches dependencies, and installs packages for Storybook'
+
+inputs:
+  install-code-deps:
+    description: 'Whether to install code dependencies in addition to script dependencies'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: '.nvmrc'
+
+    - name: Update npm to latest
+      shell: bash
+      run: npm install -g npm@latest
+
+    # Restore only — save is gated below. actions/cache's post-job save step uses a
+    # runner-internal token that bypasses `permissions:`, so splitting is the only
+    # reliable way to prevent pull_request_target runs from poisoning the shared cache.
+    - name: Restore cached dependencies
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.yarn/berry/cache
+        key: yarn-v1-${{ hashFiles('yarn.lock') }}
+        restore-keys: |
+          yarn-v1-${{ hashFiles('yarn.lock') }}
+          yarn-v1
+
+    - name: Install script dependencies
+      shell: bash
+      working-directory: scripts
+      run: yarn install
+
+    - name: Install code dependencies
+      if: inputs.install-code-deps == 'true'
+      shell: bash
+      working-directory: code
+      run: yarn install
+
+    - name: Save cached dependencies
+      if: github.event_name != 'pull_request_target'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.yarn/berry/cache
+        key: yarn-v1-${{ hashFiles('yarn.lock') }}

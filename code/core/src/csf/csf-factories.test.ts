@@ -1,0 +1,137 @@
+//* @vitest-environment happy-dom */
+import { describe, expect, expectTypeOf, test, vi } from 'vitest';
+import { testType } from 'type-plus';
+
+import { definePreview, definePreviewAddon, getStoryChildren } from './csf-factories.ts';
+import type { Tag } from './story.ts';
+
+interface Addon1Types {
+  parameters: { foo?: { value: string } };
+}
+
+const addon = definePreviewAddon<Addon1Types>({});
+
+interface Addon2Types {
+  parameters: { bar?: { value: string } };
+}
+
+const addon2 = definePreviewAddon<Addon2Types>({});
+
+const preview = definePreview({ addons: [addon, addon2], renderToCanvas: () => {} });
+
+const meta = preview.type<{ args: { label: string } }>().meta({
+  args: { label: 'foo' },
+  render: ({ label }) => 'hello' + label,
+});
+
+test('addon parameters are inferred', () => {
+  const MyStory = meta.story({
+    parameters: {
+      foo: {
+        value: '1',
+      },
+      bar: {
+        value: '1',
+      },
+    },
+  });
+  const MyStory2 = meta.story({
+    // @ts-expect-error can not assign numbers to strings
+    parameters: {
+      foo: {
+        value: 1,
+      },
+      bar: {
+        value: 1,
+      },
+    },
+  });
+});
+
+describe('test function', () => {
+  test('without overrides', async () => {
+    const MyStory = meta.story({ args: { label: 'foo' } });
+    const testFn = vi.fn(() => console.log('testFn'));
+    const testName = 'should run test';
+
+    // register test
+    MyStory.test(testName, testFn);
+    const test = getStoryChildren(MyStory).find(({ input }) => input.name === testName)!;
+    expect(test.input.args).toEqual({ label: 'foo' });
+
+    // execute test
+    await test.run(undefined, testName);
+    expect(testFn).toHaveBeenCalled();
+  });
+  test('with overrides', async () => {
+    const MyStory = meta.story({ args: { label: 'foo' } });
+    const testFn = vi.fn();
+    const testName = 'should run test';
+
+    // register test
+    MyStory.test(testName, { args: { label: 'bar' } }, testFn);
+    const test = getStoryChildren(MyStory).find(({ input }) => input.name === testName)!;
+    expect(test.input.args).toEqual({ label: 'bar' });
+
+    // execute test
+    await test.run();
+    expect(testFn).toHaveBeenCalled();
+  });
+});
+
+describe('customize tags type', () => {
+  // Customizing tags type enables autocompletion of tags.
+  test('with addon', () => {
+    const addon = definePreviewAddon<{ tags: Array<'foo' | 'bar' | (string & {})> }>({});
+    const preview = definePreview({ addons: [addon] });
+    const meta = preview.meta({
+      tags: ['foo', 'something-else'],
+    });
+    meta.story({
+      tags: ['foo', 'something-else'],
+    });
+    testType.canAssign<
+      Parameters<typeof preview.meta>[0]['tags'],
+      Array<'foo' | 'bar' | (string & {})>
+    >(true);
+    testType.canAssign<
+      Parameters<typeof meta.story>[0] extends Object
+        ? Parameters<typeof meta.story>[0]['tags']
+        : never,
+      Array<'foo' | 'bar' | (string & {})>
+    >(true);
+    testType.canAssign<
+      Parameters<typeof meta.story>[0] extends Object
+        ? Parameters<typeof meta.story>[0]['tags']
+        : never,
+      Tag[]
+    >(true);
+  });
+  test('with type method', () => {
+    const preview = definePreview({ addons: [] }).type<{
+      tags: Array<'foo' | 'bar' | (string & {})>;
+    }>();
+    const meta = preview.meta({
+      tags: ['foo', 'something-else'],
+    });
+    meta.story({
+      tags: ['foo', 'something-else'],
+    });
+    testType.canAssign<
+      Parameters<typeof preview.meta>[0]['tags'],
+      Array<'foo' | 'bar' | (string & {})>
+    >(true);
+    testType.canAssign<
+      Parameters<typeof meta.story>[0] extends Object
+        ? Parameters<typeof meta.story>[0]['tags']
+        : never,
+      Array<'foo' | 'bar' | (string & {})>
+    >(true);
+    testType.canAssign<
+      Parameters<typeof meta.story>[0] extends Object
+        ? Parameters<typeof meta.story>[0]['tags']
+        : never,
+      Tag[]
+    >(true);
+  });
+});
